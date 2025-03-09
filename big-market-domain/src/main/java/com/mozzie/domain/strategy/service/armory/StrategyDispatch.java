@@ -23,7 +23,7 @@ import java.util.*;
  */
 @Slf4j
 @Service
-public class StrategyDispatchDispatch implements IStrategyArmory, IStrategyDispatch {
+public class StrategyDispatch implements IStrategyArmory, IStrategyDispatch {
 
     @Resource
     private IStrategyRepository repository;

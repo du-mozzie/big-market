@@ -1,0 +1,61 @@
+name: AI Code Review
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # --- 以下步骤保持不变（自动获取提交信息）---
+      - name: Get repository name
+        run: echo "PROJECT_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      - name: Get commit message
+        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')" >> $GITHUB_ENV
+
+      - name: Get commit hash
+        run: echo "COMMIT_HASH=$(git log -1 --pretty=format:'%H')" >> $GITHUB_ENV
+
+      - name: Get commit datetime
+        run: echo "COMMIT_DATETIME=$(git log -1 --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:'%cd')" >> $GITHUB_ENV
+
+      - name: Get commit author info
+        run: |
+          echo "AUTHOR_NAME=$(git log -1 --pretty=format:'%an')" >> $GITHUB_ENV
+          echo "AUTHOR_EMAIL=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_ENV
+
+      - name: Get branch name
+        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+      - name: Get Code Diff
+        id: diff
+        run: |
+          git fetch --no-tags --prune --depth=2 origin +refs/heads/*:refs/remotes/origin/*
+          DIFF_CONTENT=$(git diff HEAD^ HEAD --unified=0 | jq -sR .)
+          echo "DIFF_CONTENT=$DIFF_CONTENT" >> $GITHUB_ENV
+      
+      # 发送请求进行代码评审
+      - name: Send to Review Service
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "projectName": "${{ env.PROJECT_NAME }}",
+              "commitMessage": "${{ env.COMMIT_MESSAGE }}",
+              "commitHash": "${{ env.COMMIT_HASH }}",
+              "commitDateTime": "${{ env.COMMIT_DATETIME }}",
+              "authorName": "${{ env.AUTHOR_NAME }}",
+              "authorEmail": "${{ env.AUTHOR_EMAIL }}",
+              "diff": ${{ env.DIFF_CONTENT }}
+            }' \
+            "http://121.36.71.64:1741/api/v1/code-review/exec-review/${{ secrets.ACCESS_TOKEN }}"

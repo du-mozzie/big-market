@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.mozzie.domain.strategy.model.entity.RaffleAwardEntity;
 import com.mozzie.domain.strategy.model.entity.RaffleFactorEntity;
 import com.mozzie.domain.strategy.service.IRaffleStrategy;
-import com.mozzie.domain.strategy.service.armory.StrategyDispatch;
+import com.mozzie.domain.strategy.service.armory.StrategyArmoryDispatch;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
@@ -28,7 +28,7 @@ public class RaffleStrategyTest2 {
     @Resource
     private IRaffleStrategy raffleStrategy;
     @Resource
-    private StrategyDispatch strategyArmory;
+    private StrategyArmoryDispatch strategyArmory;
 
     @Before
     public void setUp() {

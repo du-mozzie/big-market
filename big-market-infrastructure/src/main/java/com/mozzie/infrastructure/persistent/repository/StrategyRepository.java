@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -44,7 +45,7 @@ public class StrategyRepository implements IStrategyRepository {
     private IRuleTreeNodeDao ruleTreeNodeDao;
     @Resource
     private IRuleTreeNodeLineDao ruleTreeNodeLineDao;
-    
+
     @Override
     public List<StrategyAwardEntity> queryStrategyAwardList(Long strategyId) {
         // 查询缓存中是否存在
@@ -72,30 +73,6 @@ public class StrategyRepository implements IStrategyRepository {
         }
         redisService.setValue(cacheKey, strategyAwardEntities);
         return strategyAwardEntities;
-    }
-
-    @Override
-    public void storeStrategyAwardSearchRateTable(String key, Integer rateRange, Map<Integer, Integer> strategyAwardSearchRateTable) {
-        // 1. 存储抽奖策略范围值，如10000，用于生成1000以内的随机数
-        redisService.setValue(Constants.RedisKey.STRATEGY_RATE_RANGE_KEY + key, rateRange);
-        // 2. 存储概率查找表
-        Map<Integer, Integer> cacheRateTable = redisService.getMap(Constants.RedisKey.STRATEGY_RATE_TABLE_KEY + key);
-        cacheRateTable.putAll(strategyAwardSearchRateTable);
-    }
-
-    @Override
-    public Integer getStrategyAwardAssemble(String key, Integer rateKey) {
-        return redisService.getFromMap(Constants.RedisKey.STRATEGY_RATE_TABLE_KEY + key, rateKey);
-    }
-
-    @Override
-    public int getRateRange(Long strategyId) {
-        return getRateRange(String.valueOf(strategyId));
-    }
-
-    @Override
-    public int getRateRange(String key) {
-        return redisService.getValue(Constants.RedisKey.STRATEGY_RATE_RANGE_KEY + key);
     }
 
     @Override
@@ -152,6 +129,9 @@ public class StrategyRepository implements IStrategyRepository {
         strategyAward.setStrategyId(strategyId);
         strategyAward.setAwardId(awardId);
         String ruleModels = strategyAwardDao.queryStrategyAwardRuleModels(strategyAward);
+        if (null == ruleModels) {
+            return null;
+        }
         return StrategyAwardRuleModelVO.builder().ruleModels(ruleModels).build();
     }
 
@@ -265,7 +245,9 @@ public class StrategyRepository implements IStrategyRepository {
         // 优先从缓存获取
         String cacheKey = Constants.RedisKey.STRATEGY_AWARD_KEY + strategyId + Constants.UNDERLINE + awardId;
         StrategyAwardEntity strategyAwardEntity = redisService.getValue(cacheKey);
-        if (null != strategyAwardEntity) return strategyAwardEntity;
+        if (null != strategyAwardEntity) {
+            return strategyAwardEntity;
+        }
         // 查询数据
         StrategyAward strategyAwardReq = new StrategyAward();
         strategyAwardReq.setStrategyId(strategyId);
@@ -286,5 +268,29 @@ public class StrategyRepository implements IStrategyRepository {
         redisService.setValue(cacheKey, strategyAwardEntity);
         // 返回数据
         return strategyAwardEntity;
+    }
+
+    @Override
+    public Integer getStrategyAwardByAlias(Long key) {
+        return getStrategyAwardByAlias(String.valueOf(key));
+    }
+
+    @Override
+    public Integer getStrategyAwardByAlias(String key) {
+        Map<Object, Object> entries = redisService.getValue(Constants.RedisKey.STRATEGY_ALIAS_TABLE_KEY + key);
+        int[] awardIds = (int[]) entries.get("awardIds");
+        double[] prob = (double[]) entries.get("prob");
+        int[] alias = (int[]) entries.get("alias");
+
+        int n = awardIds.length;
+        int column = ThreadLocalRandom.current().nextInt(n);
+        boolean useAlias = ThreadLocalRandom.current().nextDouble() >= prob[column];
+        int awardIndex = useAlias ? alias[column] : column;
+        return awardIds[awardIndex];
+    }
+
+    @Override
+    public void storeStrategyAliasTable(String key, Map<String, Object> aliasTable) {
+        redisService.setValue(Constants.RedisKey.STRATEGY_ALIAS_TABLE_KEY + key, aliasTable);
     }
 }

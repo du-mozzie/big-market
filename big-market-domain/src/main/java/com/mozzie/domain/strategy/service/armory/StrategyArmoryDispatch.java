@@ -23,7 +23,7 @@ import java.util.*;
  */
 @Slf4j
 @Service
-public class StrategyDispatch implements IStrategyArmory, IStrategyDispatch {
+public class StrategyArmoryDispatch implements IStrategyArmory, IStrategyDispatch {
 
     @Resource
     private IStrategyRepository repository;
@@ -84,50 +84,82 @@ public class StrategyDispatch implements IStrategyArmory, IStrategyDispatch {
     }
 
     private void assembleLotteryStrategy(String key, List<StrategyAwardEntity> strategyAwardEntities) {
-        // 1. 获取最小概率值
-        BigDecimal minAwardRate = strategyAwardEntities.stream()
-                .map(StrategyAwardEntity::getAwardRate)
-                .min(BigDecimal::compareTo)
-                .orElse(BigDecimal.ZERO);
+        int n = strategyAwardEntities.size();
+        int[] awardIds = new int[n];
+        BigDecimal[] probabilities = new BigDecimal[n];
 
-        // 2. 获取概率值总和
-        BigDecimal totalAwardRate = strategyAwardEntities.stream()
-                .map(StrategyAwardEntity::getAwardRate)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 1. 提取奖项ID和概率，并计算总概率
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = 0; i < n; i++) {
+            StrategyAwardEntity entity = strategyAwardEntities.get(i);
+            awardIds[i] = entity.getAwardId();
+            probabilities[i] = entity.getAwardRate();
+            total = total.add(entity.getAwardRate());
+        }
 
-        // 3. 用 1 % 0.0001 获得概率范围，百分位、千分位、万分位
-        BigDecimal rateRange = totalAwardRate.divide(minAwardRate, 0, RoundingMode.CEILING);
+        // 2. 标准化概率并放大N倍（使用高精度计算）
+        BigDecimal[] scaled = new BigDecimal[n];
+        for (int i = 0; i < n; i++) {
+            scaled[i] = probabilities[i].divide(total, 10, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(n));
+        }
 
-        // 4. 生成策略奖品概率查找表「这里指需要在list集合中，存放上对应的奖品占位即可，占位越多等于概率越高」
-        List<Integer> strategyAwardSearchRateTables = new ArrayList<>(rateRange.intValue());
-        for (StrategyAwardEntity strategyAward : strategyAwardEntities) {
-            Integer awardId = strategyAward.getAwardId();
-            BigDecimal awardRate = strategyAward.getAwardRate();
-            // 计算出每个概率值需要存放到查找表的数量，循环填充
-            for (int i = 0; i < rateRange.multiply(awardRate).setScale(0, RoundingMode.CEILING).intValue(); i++) {
-                strategyAwardSearchRateTables.add(awardId);
+        // 3. 初始化队列
+        Queue<Integer> small = new LinkedList<>();
+        Queue<Integer> large = new LinkedList<>();
+        for (int i = 0; i < n; i++) {
+            if (scaled[i].compareTo(BigDecimal.ONE) < 0) {
+                small.offer(i);
+            } else {
+                large.offer(i);
             }
         }
 
-        // 5. 对存储的奖品进行乱序操作
-        Collections.shuffle(strategyAwardSearchRateTables);
+        // 4. 构建 Alias 表
+        double[] prob = new double[n];
+        int[] alias = new int[n];
+        while (!small.isEmpty() && !large.isEmpty()) {
+            int s = small.poll();
+            int l = large.poll();
 
-        // 6. 生成出Map集合，key值，对应的就是后续的概率值。通过概率来获得对应的奖品ID
-        Map<Integer, Integer> shuffleStrategyAwardSearchRateTable = new LinkedHashMap<>();
-        for (int i = 0; i < strategyAwardSearchRateTables.size(); i++) {
-            shuffleStrategyAwardSearchRateTable.put(i, strategyAwardSearchRateTables.get(i));
+            // 记录概率和别名索引
+            prob[s] = scaled[s].doubleValue();
+            alias[s] = l; // 关键修复：存储索引而非奖项ID
+
+            // 更新被补充的概率
+            BigDecimal remaining = scaled[l].subtract(BigDecimal.ONE.subtract(scaled[s]));
+            scaled[l] = remaining;
+            if (remaining.compareTo(BigDecimal.ONE) < 0) {
+                small.offer(l);
+            } else {
+                large.offer(l);
+            }
         }
 
-        // 7. 存放到 Redis
-        repository.storeStrategyAwardSearchRateTable(key, shuffleStrategyAwardSearchRateTable.size(), shuffleStrategyAwardSearchRateTable);
+        // 5. 处理剩余元素（保持自环）
+        while (!large.isEmpty()) {
+            int l = large.poll();
+            prob[l] = 1.0;
+            alias[l] = l; // 自环
+        }
+        while (!small.isEmpty()) {
+            int s = small.poll();
+            prob[s] = 1.0;
+            alias[s] = s; // 自环
+        }
+
+        // 6. 存储到Redis（需包含 awardIds 映射表）
+        Map<String, Object> aliasTable = new HashMap<>();
+        aliasTable.put("awardIds", awardIds);
+        aliasTable.put("prob", prob);
+        aliasTable.put("alias", alias);
+        
+        repository.storeStrategyAliasTable(key, aliasTable);
     }
 
     @Override
     public Integer getRandomAwardId(Long strategyId) {
         // 分布式部署下，不一定为当前应用做的策略装配。也就是值不一定会保存到本应用，而是分布式应用，所以需要从 Redis 中获取。
-        int rateRange = repository.getRateRange(strategyId);
-        // 通过生成的随机值，获取概率值奖品查找表的结果
-        return repository.getStrategyAwardAssemble(String.valueOf(strategyId), new SecureRandom().nextInt(rateRange));
+        return repository.getStrategyAwardByAlias(strategyId);
     }
 
     @Override
@@ -138,10 +170,8 @@ public class StrategyDispatch implements IStrategyArmory, IStrategyDispatch {
 
     @Override
     public Integer getRandomAwardId(String key) {
-        // 分布式部署下，不一定为当前应用做的策略装配。也就是值不一定会保存到本应用，而是分布式应用，所以需要从 Redis 中获取。
-        int rateRange = repository.getRateRange(key);
-        // 通过生成的随机值，获取概率值奖品查找表的结果
-        return repository.getStrategyAwardAssemble(key, secureRandom.nextInt(rateRange));
+        // 使用别名算法进行随机抽样
+        return repository.getStrategyAwardByAlias(key);
     }
 
     @Override

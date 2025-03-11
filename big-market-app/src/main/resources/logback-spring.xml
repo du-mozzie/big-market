@@ -1,113 +1,174 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 日志级别从低到高分为TRACE < DEBUG < INFO < WARN < ERROR < FATAL，如果设置为WARN，则低于WARN的信息都不会输出 -->
-<configuration scan="true" scanPeriod="10 seconds">
+<!-- 默认在classpath下查找logback-test.xml，如果没有则查找logback.xml，否则使用默认配置：输出到控制台 -->
+<!-- 
+scan: 当此属性设置为true时，配置文件如果发生改变，将会被重新加载，默认值为true。
+scanPeriod: 设置监测配置文件是否有修改的时间间隔，如果没有给出时间单位，默认单位是毫秒。当scan为true时，此属性生效。默认的时间间隔为1分钟。
+debug: 当此属性设置为true时，将打印出logback内部日志信息，实时查看logback运行状态。默认值为false。
+ -->
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <property resource="application.properties"/>
+    <springProperty scope="context" name="LOG_LEVEL" source="log.level"/>
+    <property name="LOG_HOME" value="../logs"/>
 
-    <contextName>logback</contextName>
-    <!-- name的值是变量的名称，value的值时变量定义的值。通过定义的值会被插入到logger上下文中。定义变量后，可以使“${}”来使用变量。 -->
-    <springProperty scope="context" name="log.path" source="logging.path"/>
-    <!-- 日志格式 -->
-    <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
-    <conversionRule conversionWord="wex"
-                    converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
-    <conversionRule conversionWord="wEx"
-                    converterClass="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+    <!-- 用来设置上下文名称，每个logger都关联到logger上下文，默认上下文名称为default。但可以使用<contextName>设置成其他名字，用于区分不同应用程序的记录。一旦设置，不能修改。 -->
+    <contextName>big-market</contextName>
 
     <!-- 输出到控制台 -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <!-- 此日志appender是为开发使用，只配置最底级别，控制台输出的日志级别是大于或等于此级别的日志信息 -->
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>info</level>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>DEBUG</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
         </filter>
-        <encoder>
-            <pattern>%d{yy-MM-dd.HH:mm:ss.SSS} [%-16t] %-5p %-22c{0}%X{ServiceId} -%X{trace-id} %m%n</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
     </appender>
 
-    <!--输出到文件-->
-    <!-- 时间滚动输出 level为 INFO 日志 -->
-    <appender name="INFO_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <!-- 正在记录的日志文件的路径及文件名 -->
-        <file>./data/log/info/log_info.log</file>
-        <!--日志文件输出格式-->
-        <encoder>
-            <pattern>%d{yy-MM-dd.HH:mm:ss.SSS} [%-16t] %-5p %-22c{0}%X{ServiceId} -%X{trace-id} %m%n</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <!-- 日志记录器的滚动策略，按日期，按大小记录 -->
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- 每天日志归档路径以及格式 -->
-            <fileNamePattern>./data/log/info/log-info-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>100MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
-            <!--日志文件保留天数-->
-            <maxHistory>15</maxHistory>
-            <totalSizeCap>10GB</totalSizeCap>
-        </rollingPolicy>
-    </appender>
-
-    <!-- 时间滚动输出 level为 ERROR 日志 -->
-    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <!-- 正在记录的日志文件的路径及文件名 -->
-        <file>./data/log/error/log_error.log</file>
-        <!--日志文件输出格式-->
-        <encoder>
-            <pattern>%d{yy-MM-dd.HH:mm:ss.SSS} [%-16t] %-5p %-22c{0}%X{ServiceId} -%X{trace-id} %m%n</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <!-- 日志记录器的滚动策略，按日期，按大小记录 -->
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>./data/log/error/log-error-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>100MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
-            <!-- 日志文件保留天数【根据服务器预留，可自行调整】 -->
+    <appender name="FILE"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/logFile.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 日志最大的历史 7天 -->
             <maxHistory>7</maxHistory>
-            <totalSizeCap>5GB</totalSizeCap>
+            <!--控制所有归档日志文件的总大小-->
+            <totalSizeCap>2GB</totalSizeCap>
         </rollingPolicy>
-        <!-- WARN 级别及以上 -->
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>WARN</level>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+    </appender>
+
+    <!--输出到debug-->
+    <appender name="debug"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>
+                ${LOG_HOME}/debug/logback-debug-%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <!-- 日志最大的历史 7天 -->
+            <maxHistory>7</maxHistory>
+            <!--控制所有归档日志文件的总大小-->
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter"><!-- 只打印DEBUG日志 -->
+            <level>DEBUG</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
         </filter>
     </appender>
 
-    <!-- 异步输出 -->
-    <appender name="ASYNC_FILE_INFO" class="ch.qos.logback.classic.AsyncAppender">
-        <!-- 队列剩余容量小于discardingThreshold,则会丢弃TRACT、DEBUG、INFO级别的日志;默认值-1,为queueSize的20%;0不丢失日志 -->
-        <discardingThreshold>0</discardingThreshold>
-        <!-- 更改默认的队列的深度,该值会影响性能.默认值为256 -->
-        <queueSize>8192</queueSize>
-        <!-- neverBlock:true 会丢失日志,但业务性能不受影响 -->
-        <neverBlock>true</neverBlock>
-        <!--是否提取调用者数据-->
-        <includeCallerData>false</includeCallerData>
-        <appender-ref ref="INFO_FILE"/>
+    <!--输出到info-->
+    <appender name="info"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/info/logback-info-%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <!-- 日志最大的历史 7天 -->
+            <maxHistory>7</maxHistory>
+            <!--控制所有归档日志文件的总大小-->
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter"><!-- 只打印INFO日志 -->
+            <level>INFO</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
     </appender>
 
-    <appender name="ASYNC_FILE_ERROR" class="ch.qos.logback.classic.AsyncAppender">
-        <!-- 队列剩余容量小于discardingThreshold,则会丢弃TRACT、DEBUG、INFO级别的日志;默认值-1,为queueSize的20%;0不丢失日志 -->
-        <discardingThreshold>0</discardingThreshold>
-        <!-- 更改默认的队列的深度,该值会影响性能.默认值为256 -->
-        <queueSize>1024</queueSize>
-        <!-- neverBlock:true 会丢失日志,但业务性能不受影响 -->
-        <neverBlock>true</neverBlock>
-        <!--是否提取调用者数据-->
-        <includeCallerData>false</includeCallerData>
-        <appender-ref ref="ERROR_FILE"/>
+    <!--输出到error-->
+    <appender name="error"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>
+                ${LOG_HOME}/error/logback-error-%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <!-- 日志最大的历史 7天 -->
+            <maxHistory>7</maxHistory>
+            <!--控制所有归档日志文件的总大小-->
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter"><!-- 只打印ERROR日志 -->
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
     </appender>
 
-    <!-- 开发环境：控制台打印 -->
-    <springProfile name="dev">
-        <logger name="com.nmys.view" level="debug"/>
-    </springProfile>
+    <!--输出到warn-->
+    <appender name="warn"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy
+                class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/warn/logback-warn-%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <!-- 日志最大的历史 7天 -->
+            <maxHistory>7</maxHistory>
+            <!--控制所有归档日志文件的总大小-->
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %contextName [%thread] %-5level
+                %logger{35} - %msg%n
+            </pattern>
+            <charset>utf-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter"><!-- 只打印WARN日志 -->
+            <level>WARN</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+    <!-- myibatis log configure-->
+    <logger name="com.apache.ibatis" level="TRACE"/>
+    <logger name="java.sql.Connection" level="DEBUG"/>
+    <logger name="java.sql.Statement" level="DEBUG"/>
+    <logger name="java.sql.PreparedStatement" level="DEBUG"/>
 
-    <root level="info">
-        <appender-ref ref="CONSOLE"/>
-        <!-- 异步日志-INFO -->
-        <appender-ref ref="ASYNC_FILE_INFO"/>
-        <!-- 异步日志-ERROR -->
-        <appender-ref ref="ASYNC_FILE_ERROR"/>
+    <logger name="com.staryea" level="DEBUG">
+        <!-- 输出到上面配置的对应的输出流中 -->
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="debug"/>
+    </logger>
+
+    <root level="${LOG_LEVEL}">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="debug"/>
+        <appender-ref ref="info"/>
+        <appender-ref ref="error"/>
+        <appender-ref ref="warn"/>
     </root>
-
 </configuration>

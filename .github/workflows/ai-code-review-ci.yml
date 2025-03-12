@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      # --- 以下步骤保持不变（自动获取提交信息）---
+      # --- 环境变量获取步骤保持不变 ---
       - name: Get repository name
         run: echo "PROJECT_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
 
@@ -37,25 +37,40 @@ jobs:
       - name: Get branch name
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
+      # --- 修改后的Diff获取和发送步骤 ---
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
       - name: Get Code Diff
         id: diff
         run: |
-          git fetch --no-tags --prune --depth=2 origin +refs/heads/*:refs/remotes/origin/*
-          DIFF_CONTENT=$(git diff HEAD^ HEAD --unified=0 | jq -sR .)
-          echo "DIFF_CONTENT=$DIFF_CONTENT" >> $GITHUB_ENV
-      
-      # 发送请求进行代码评审
+          # 获取规范的父提交（正确处理合并提交）
+          PARENT_COMMIT=$(git rev-parse ${{ env.COMMIT_HASH }}^)
+          git diff $PARENT_COMMIT ${{ env.COMMIT_HASH }} > diff.txt
+
+      - name: Generate JSON payload
+        run: |
+          jq -n \
+            --arg projectName "${{ env.PROJECT_NAME }}" \
+            --arg commitMessage "${{ env.COMMIT_MESSAGE }}" \
+            --arg commitHash "${{ env.COMMIT_HASH }}" \
+            --arg commitDateTime "${{ env.COMMIT_DATETIME }}" \
+            --arg authorName "${{ env.AUTHOR_NAME }}" \
+            --arg authorEmail "${{ env.AUTHOR_EMAIL }}" \
+            --rawfile diffContent diff.txt \
+            '{
+              projectName: $projectName,
+              commitMessage: $commitMessage,
+              commitHash: $commitHash,
+              commitDateTime: $commitDateTime,
+              authorName: $authorName,
+              authorEmail: $authorEmail,
+              diff: $diffContent
+            }' > payload.json
+
       - name: Send to Review Service
         run: |
           curl -X POST \
             -H "Content-Type: application/json" \
-            -d '{
-              "projectName": "${{ env.PROJECT_NAME }}",
-              "commitMessage": "${{ env.COMMIT_MESSAGE }}",
-              "commitHash": "${{ env.COMMIT_HASH }}",
-              "commitDateTime": "${{ env.COMMIT_DATETIME }}",
-              "authorName": "${{ env.AUTHOR_NAME }}",
-              "authorEmail": "${{ env.AUTHOR_EMAIL }}",
-              "diff": ${{ env.DIFF_CONTENT }}
-            }' \
+            -d @payload.json \
             "http://121.36.71.64:1741/api/v1/code-review/exec-review/${{ secrets.ACCESS_TOKEN }}"

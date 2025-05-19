@@ -38,6 +38,7 @@ public class DefaultChainFactory {
         if (null == ruleModels || 0 == ruleModels.length) return logicChainGroup.get("default");
 
         // 按照配置顺序装填用户配置的责任链；rule_blacklist、rule_weight 「注意此数据从Redis缓存中获取，如果更新库表，记得在测试阶段手动处理缓存」
+        // logicChainGroup是各种责任链的实现, spring自动注入一个map, key是责任链的名称（跟数据库配置的名称一致），value是责任链的实现
         ILogicChain logicChain = logicChainGroup.get(ruleModels[0]);
         ILogicChain current = logicChain;
         for (int i = 1; i < ruleModels.length; i++) {
@@ -75,5 +76,4 @@ public class DefaultChainFactory {
         private final String info;
 
     }
-
 }

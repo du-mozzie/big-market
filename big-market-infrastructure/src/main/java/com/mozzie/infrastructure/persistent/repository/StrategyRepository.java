@@ -151,6 +151,7 @@ public class StrategyRepository implements IStrategyRepository {
 
         // 1. tree node line 转换Map结构
         Map<String, List<RuleTreeNodeLineVO>> ruleTreeNodeLineMap = new HashMap<>();
+        // 当前每个连线存入map中, key是节点的from, value该节点的分支信息
         for (RuleTreeNodeLine ruleTreeNodeLine : ruleTreeNodeLines) {
             RuleTreeNodeLineVO ruleTreeNodeLineVO = RuleTreeNodeLineVO.builder()
                     .treeId(ruleTreeNodeLine.getTreeId())
